@@ -18,6 +18,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -179,49 +180,6 @@ func (c *APIClient) NodeMetadataMapping(nodeName string, podList *v1.PodList) er
 	return nil
 }
 
-// ClusterMetadataMapping is run by the Cluster Agent. It queries the Kubernetes apiserver to get the following resources:
-// - all nodes
-// - all endpoints of all namespaces
-// - all pods of all namespaces
-// Then it stores in cache the MetadataMapperBundle of each node.
-func (c *APIClient) ClusterMetadataMapping() error {
-	// A poll run should take less than the poll frequency.
-	// We fetch nodes to reliably use nodename as key in the cache.
-	// Avoiding to retrieve them from the endpoints/podList.
-	nodeList, err := c.Cl.CoreV1().Nodes().List(metav1.ListOptions{TimeoutSeconds: &c.timeoutSeconds})
-	if err != nil {
-		log.Errorf("Could not collect nodes from the kube-apiserver: %q", err.Error())
-		return err
-	}
-	if nodeList.Items == nil {
-		log.Debug("No node collected from the kube-apiserver")
-		return nil
-	}
-
-	endpointList, err := c.Cl.CoreV1().Endpoints("").List(metav1.ListOptions{TimeoutSeconds: &c.timeoutSeconds})
-	if err != nil {
-		log.Errorf("Could not collect endpoints from the kube-apiserver: %q", err.Error())
-		return err
-	}
-	if endpointList.Items == nil {
-		log.Debug("No endpoint collected from the kube-apiserver")
-		return nil
-	}
-
-	podList, err := c.Cl.CoreV1().Pods("").List(metav1.ListOptions{TimeoutSeconds: &c.timeoutSeconds})
-	if err != nil {
-		log.Errorf("Could not collect pods from the kube-apiserver: %q", err.Error())
-		return err
-	}
-	if podList.Items == nil {
-		log.Debug("No pod collected from the kube-apiserver")
-		return nil
-	}
-
-	processKubeServices(nodeList, podList, endpointList)
-	return nil
-}
-
 // processKubeServices adds services to the metadataMapper cache, pointer parameters must be non nil
 func processKubeServices(nodeList *v1.NodeList, podList *v1.PodList, endpointList *v1.EndpointsList) {
 	if nodeList.Items == nil || podList.Items == nil || endpointList.Items == nil {
@@ -261,17 +219,16 @@ func processKubeServices(nodeList *v1.NodeList, podList *v1.PodList, endpointLis
 
 // StartClusterMetadataMapping is only called once, when we have confirmed we could correctly connect to the API server.
 // The logic here is solely to retrieve Nodes, Pods and Endpoints. The processing part is in mapServices.
-func (c *APIClient) StartClusterMetadataMapping() {
-	tickerSvcProcess := time.NewTicker(c.metadataPollIntl)
-	log.Infof("Starting the cluster level metadata mapping, polling every %s", c.metadataPollIntl.String())
-	go func() {
-		for {
-			select {
-			case <-tickerSvcProcess.C:
-				c.ClusterMetadataMapping()
-			}
-		}
-	}()
+func (c *APIClient) StartClusterMetadataMapping(stopCh chan struct{}) {
+	informerFactory := informers.NewSharedInformerFactory(c.Cl, 30*time.Second)
+	metaController := NewMetadataController(
+		informerFactory.Core().V1().Nodes(),
+		informerFactory.Core().V1().Endpoints(),
+	)
+
+	informerFactory.Start(stopCh)
+
+	go metaController.Run(stopCh)
 }
 
 func aggregateCheckResourcesErrors(errorMessages []string) error {
