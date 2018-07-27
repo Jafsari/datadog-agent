@@ -113,13 +113,13 @@ func (m *MetadataController) processNextWorkItem() bool {
 
 func (m *MetadataController) addEndpoints(obj interface{}) {
 	endpoints := obj.(*corev1.Endpoints)
-	log.Tracef("Adding endpoints %s", endpoints.Name)
+	log.Tracef("Adding endpoints %s/%s", endpoints.Namespace, endpoints.Name)
 	m.enqueue(obj)
 }
 
 func (m *MetadataController) updateEndpoints(_, new interface{}) {
 	newEndpoints := new.(*corev1.Endpoints)
-	log.Tracef("Updating endpoints %s", newEndpoints.Name)
+	log.Tracef("Updating endpoints %s/%s", newEndpoints.Namespace, newEndpoints.Name)
 	m.enqueue(new)
 }
 
@@ -137,7 +137,7 @@ func (m *MetadataController) deleteEndpoints(obj interface{}) {
 			return
 		}
 	}
-	log.Tracef("Deleting endpoints %s", endpoints.Name)
+	log.Tracef("Deleting endpoints %s/%s", endpoints.Namespace, endpoints.Name)
 	m.enqueue(obj)
 }
 
@@ -229,6 +229,8 @@ func (m *MetadataController) mapDeletedService(namespace, svc string) error {
 	if err != nil {
 		return err
 	}
+
+	// Delete the service from the metadata bundle for each node.
 	for _, node := range nodes {
 		metaBundle, err := getMetadataMapBundle(node.Name)
 		if err != nil {

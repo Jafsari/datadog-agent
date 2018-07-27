@@ -120,7 +120,7 @@ func TestMetadataControllerMapServices(t *testing.T) {
 	}
 	for _, tt := range tests {
 		for _, endpoints := range tt.endpoints {
-			err := metaController.mapServices(endpoints)
+			err := metaController.mapService(endpoints)
 			require.NoError(t, err)
 		}
 
