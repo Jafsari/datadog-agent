@@ -7,6 +7,7 @@ package collectors
 
 import "github.com/DataDog/datadog-agent/pkg/util/containers"
 
+// Collector is the public interface to container collectors must implement
 type Collector interface {
 	Detect() error
 	List() ([]*containers.Container, error)
@@ -16,8 +17,8 @@ type Collector interface {
 type CollectorPriority int
 
 // List of collector priorities
+// Order is reverse from the tagger: docker > kubelet
 const (
-	NodeRuntime CollectorPriority = iota
-	NodeOrchestrator
-	ClusterOrchestrator
+	NodeOrchestrator CollectorPriority = iota
+	NodeRuntime
 )

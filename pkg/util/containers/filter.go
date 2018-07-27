@@ -37,6 +37,8 @@ type Filter struct {
 	NameBlacklist  []*regexp.Regexp
 }
 
+var sharedFilter *Filter
+
 func parseFilters(filters []string) (imageFilters, nameFilters []*regexp.Regexp, err error) {
 	for _, filter := range filters {
 		switch {
@@ -57,6 +59,20 @@ func parseFilters(filters []string) (imageFilters, nameFilters []*regexp.Regexp,
 		}
 	}
 	return imageFilters, nameFilters, nil
+}
+
+// GetSharedFilter allows to share the result of NewFilterFromConfig
+// for several user classes
+func GetSharedFilter() (*Filter, error) {
+	if sharedFilter != nil {
+		return sharedFilter, nil
+	}
+	f, err := NewFilterFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	sharedFilter = f
+	return f, nil
 }
 
 // NewFilter creates a new container filter from a two slices of

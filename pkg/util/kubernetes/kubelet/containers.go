@@ -9,13 +9,14 @@ package kubelet
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/DataDog/datadog-agent/pkg/util/containers"
 	"github.com/DataDog/datadog-agent/pkg/util/containers/metrics"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
 
+// Containers lists all non-excluded containers and retrieves their
+// performance metrics
 func (ku *KubeUtil) Containers() ([]*containers.Container, error) {
 	pods, err := ku.GetLocalPodList()
 	if err != nil {
@@ -31,7 +32,10 @@ func (ku *KubeUtil) Containers() ([]*containers.Container, error) {
 
 	for _, pod := range pods {
 		for _, c := range pod.Status.Containers {
-			container, err := parseContainerInPod(c, pod)
+			if ku.filter.IsExcluded(c.Name, c.Image) {
+				continue
+			}
+			container, err := ku.parseContainerInPod(c, pod)
 			if err != nil {
 				log.Debugf("Cannot parse container %s in pod %s: %s", c.ID, pod.Metadata.Name, err)
 				continue
@@ -74,37 +78,35 @@ func (ku *KubeUtil) Containers() ([]*containers.Container, error) {
 	return ctrList, nil
 }
 
-func parseContainerInPod(status ContainerStatus, pod *Pod) (*containers.Container, error) {
+func (ku *KubeUtil) parseContainerInPod(status ContainerStatus, pod *Pod) (*containers.Container, error) {
 	c := &containers.Container{
 		Type:     "kubelet",
 		ID:       TrimRuntimeFromCID(status.ID),
 		EntityID: status.ID,
-		Name:     status.Name,
+		Name:     fmt.Sprintf("%s-%s", pod.Metadata.Name, status.Name),
 		Image:    status.Image,
-		// Fake
-		Health:   "",
-		Excluded: false,
+		// TODO
+		Health: containers.ContainerHealthy,
 	}
 
 	switch {
+	case status.State.Waiting != nil:
+		// We don't display waiting containers
+		log.Tracef("Skipping waiting container %s", c.ID)
+		return nil, nil
 	case status.State.Running != nil:
 		c.State = containers.ContainerRunningState
 		c.Created = status.State.Running.StartedAt.Unix()
-	case status.State.Waiting != nil:
-		// TODO We don't handle waiting container yet
-		return nil, nil
 	case status.State.Terminated != nil:
-		// TODO look at reason
-		c.State = containers.ContainerExitedState
+		if status.State.Terminated.ExitCode == 0 {
+			c.State = containers.ContainerExitedState
+		} else {
+			c.State = containers.ContainerDeadState
+		}
 		c.Created = status.State.Terminated.StartedAt.Unix()
 	default:
-		return nil, fmt.Errorf("container %s is in an unknown state", c.ID)
+		return nil, fmt.Errorf("container %s is in an unknown state, skipping", c.ID)
 	}
 
 	return c, nil
-}
-
-func TrimRuntimeFromCID(cid string) string {
-	parts := strings.SplitN(cid, "://", 2)
-	return parts[len(parts)-1]
 }

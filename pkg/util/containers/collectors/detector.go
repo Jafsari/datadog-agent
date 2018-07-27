@@ -13,33 +13,48 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util/retry"
 )
 
+// ErrNothing is returned when no collector is currently available.
+// This might change in the future if new collectors are valid.
 var ErrNothing = errors.New("No collector available")
 
+// Detector holds the logic to initialise collectors,
+// with retries, and selecting the most appropriate
 type Detector struct {
-	candidates        map[string]Collector
-	detected          map[string]Collector
-	preferedCollector Collector
-	preferedName      string
+	candidates         map[string]Collector
+	detected           map[string]Collector
+	preferredCollector Collector
+	preferredName      string
 }
 
-func NewDetector() *Detector {
+// NewDetector returns a Detector ready to use. If configuredName
+// is empty, autodetection is enabled. If not, only the one name
+// will be tried.
+func NewDetector(configuredName string) *Detector {
 	d := &Detector{
 		candidates: make(map[string]Collector),
 		detected:   make(map[string]Collector),
 	}
 	// Load candidates from catalog
-	for n, f := range DefaultCatalog {
+	for n, f := range defaultCatalog {
+		if configuredName != "" && n != configuredName {
+			// If a collector name is configured, skip the others
+			continue
+		}
 		d.candidates[n] = f()
 	}
 	return d
 }
 
-func (d *Detector) GetPrefered() (Collector, string, error) {
+// GetPreferred detects, ranks and returns the best collector for now.
+// Result might change if new collectors are valid after start, then
+// constant when all collectors are either ok or PermaFail.
+// Users should keep calling this method instead of caching the first result.
+func (d *Detector) GetPreferred() (Collector, string, error) {
+	if d.preferredCollector != nil {
+		return d.preferredCollector, d.preferredName, nil
+	}
 	if d.candidates != nil {
 		d.detectCandidates()
-	}
-	if d.preferedCollector != nil {
-		return d.preferedCollector, d.preferedName, nil
 	}
 	return nil, "", ErrNothing
 }
@@ -76,27 +91,35 @@ func (d *Detector) detectCandidates() {
 		return
 	}
 
-	// Pick prefered collector among detected ones
-	var prefered string
-	for name, _ := range d.detected {
+	// Pick preferred collector among detected ones
+	var preferred string
+	for name := range d.detected {
 		// First one
-		if prefered == "" {
-			prefered = name
+		if preferred == "" {
+			preferred = name
 			continue
 		}
-		// Highest priority first
-		if CollectorPriorities[name] > CollectorPriorities[prefered] {
-			prefered = name
-			continue
-		}
-		// Alphabetic order to stay stable
-		if CollectorPriorities[name] == CollectorPriorities[prefered] && strings.Compare(prefered, name) > 1 {
-			prefered = name
+		if isPrefered(name, preferred) {
+			preferred = name
 			continue
 		}
 	}
 
-	log.Infof("Using collector %s", prefered)
-	d.preferedName = prefered
-	d.preferedCollector = d.detected[prefered]
+	log.Infof("Using collector %s", preferred)
+	d.preferredName = preferred
+	d.preferredCollector = d.detected[preferred]
+}
+
+// isPrefered compares a collector by name to the current preferred
+// to determine whether it should be used instead
+func isPrefered(name, current string) bool {
+	// Highest priority first
+	if collectorPriorities[name] > collectorPriorities[current] {
+		return true
+	}
+	if collectorPriorities[name] < collectorPriorities[current] {
+		return false
+	}
+	// Alphabetic order to stay stable
+	return strings.Compare(current, name) > 1
 }

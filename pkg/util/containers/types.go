@@ -9,14 +9,23 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util/containers/metrics"
 )
 
-// Expose container states
+// Supported container states
 const (
-	ContainerCreatedState    string = "created"
-	ContainerRunningState    string = "running"
-	ContainerRestartingState string = "restarting"
-	ContainerPausedState     string = "paused"
-	ContainerExitedState     string = "exited"
-	ContainerDeadState       string = "dead"
+	ContainerUnknownState    string = "unknown"
+	ContainerCreatedState           = "created"
+	ContainerRunningState           = "running"
+	ContainerRestartingState        = "restarting"
+	ContainerPausedState            = "paused"
+	ContainerExitedState            = "exited"
+	ContainerDeadState              = "dead"
+)
+
+// Supported container health
+const (
+	ContainerUnknownHealth  string = "unknown"
+	ContainerStartingHealth        = "starting"
+	ContainerHealthy               = "healthy"
+	ContainerUnhealthy             = "unhealthy"
 )
 
 var (

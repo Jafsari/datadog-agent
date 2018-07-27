@@ -11,14 +11,14 @@ type CollectorFactory func() Collector
 // Catalog holds available collectors for detection and usage
 type Catalog map[string]CollectorFactory
 
-// DefaultCatalog holds every compiled-in collector
-var DefaultCatalog = make(Catalog)
+// defaultCatalog holds every compiled-in collector
+var defaultCatalog = make(Catalog)
 
 // CollectorPriorities holds collector priorities
-var CollectorPriorities = make(map[string]CollectorPriority)
+var collectorPriorities = make(map[string]CollectorPriority)
 
 // registerCollector is to be called by collectors to be added to the default catalog
 func registerCollector(name string, c CollectorFactory, p CollectorPriority) {
-	DefaultCatalog[name] = c
-	CollectorPriorities[name] = p
+	defaultCatalog[name] = c
+	collectorPriorities[name] = p
 }

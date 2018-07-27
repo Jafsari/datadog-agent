@@ -66,7 +66,7 @@ func (d *DockerUtil) init() error {
 		CacheDuration:  10 * time.Second,
 	}
 
-	cfg.filter, err = containers.NewFilterFromConfig()
+	cfg.filter, err = containers.GetSharedFilter()
 	if err != nil {
 		return err
 	}
